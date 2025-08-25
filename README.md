@@ -1,6 +1,6 @@
 *A Streamlit-based tool for analyzing asset performance, volatility, drawdowns, and technical indicators.*
 
-![1756138147744](image/README/1756138147744.png)**📌 Overview**
+**📌 Overview**
 
 This dashboard allows users to:
 
