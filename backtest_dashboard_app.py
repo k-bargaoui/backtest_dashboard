@@ -189,7 +189,7 @@ with tab1:
         if df.empty or len(df['Close'].dropna()) < 2:
             st.warning(f"No valid data for {ticker}.")
             continue
-        st.caption(f"📈 {ticker} data available from `{df.index.min().date()}` to `{df.index.max().date()}`")
+        #st.caption(f"📈 {ticker} data available from `{df.index.min().date()}` to `{df.index.max().date()}`")
         if st.session_state.show_price:
             st.subheader("Price Chart")
             df[f"SMA{st.session_state.sma_window}"] = df['Close'].rolling(window=st.session_state.sma_window).mean()
