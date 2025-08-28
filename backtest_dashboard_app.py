@@ -214,91 +214,52 @@ with tab1:
 # ===============================
 # --- Tab 2: Leaderboard ---
 # ===============================
-with tab2:
-    st.subheader("🏆 Performance Leaderboard")
-    leaderboard = []
-    annual_returns = []
-    for ticker in tickers:
-        df = get_data(ticker, start_date, end_date)
-        if df.empty or len(df['Close'].dropna()) < 2:
-            continue
-        initial_price, final_price = float(df['Close'].iloc[0]), float(df['Close'].iloc[-1])
-        return_pct = ((final_price / initial_price) - 1) * 100
-        invested_final_value = st.session_state.initial_investment * (final_price / initial_price)
-        annualized_return = df['Daily Return'].mean() * 252
-        annualized_volatility = df['Daily Return'].std() * np.sqrt(252)
-        annualized_sharpe = annualized_return / annualized_volatility if annualized_volatility else np.nan
-        leaderboard.append({
-            "Ticker": ticker,
-            "Return (%)": round(return_pct, 2),
-            "Final Value (€)": round(invested_final_value, 2),
-            "Annualized Return (%)": round(annualized_return * 100, 2),
-            "Annualized Volatility (%)": round(annualized_volatility * 100, 2),
-            "Sharpe Ratio": round(annualized_sharpe, 2)
-        })
-        df['Year'] = df.index.year
-        grouped = df.groupby('Year')['Daily Return'].apply(lambda x: (1 + x).prod() - 1)
-        for year, ret in grouped.items():
-            annual_returns.append({"Ticker": ticker, "Year": year, "Return (%)": round(ret * 100, 2)})
-    if leaderboard:
-        leaderboard_df = pd.DataFrame(leaderboard).sort_values(by="Annualized Return (%)", ascending=False)
-        st.dataframe(leaderboard_df, use_container_width=True)
-        st.subheader("📅 Annual Returns by Year")
-        annual_df = pd.DataFrame(annual_returns)
-        fig = px.bar(annual_df, x="Year", y="Return (%)", color="Ticker", barmode="group", title="Annual Returns by Ticker")
-        st.plotly_chart(fig, use_container_width=True)
-        csv = leaderboard_df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Leaderboard as CSV", data=csv, file_name="leaderboard.csv", mime="text/csv")
-    else:
-        st.info("No valid data to display in leaderboard.")
-
-
-# ===============================
-# --- Tab 3: Simulation ---
-# ===============================
-# --- Tab 3: Portfolio Simulation ---
-# ===============================
 with tab3:
     st.subheader("📊 Portfolio Simulation")
     if tickers:
-        st.markdown("### Enter Portfolio Weights (should sum to 100%)")
+        st.markdown("### Enter Portfolio Weights (should sum to 100, integers only)")
 
-        # Initialize weights in session_state if missing
         n = len(tickers)
-        base_weight = 100 / n
-        weights = []
-        for idx, ticker in enumerate(tickers):
-            key = f"weight_{ticker}"
-            if key not in st.session_state:
-                st.session_state[key] = round(base_weight, 2)
+        base_weight = 100 // n
+        remainder = 100 - (base_weight * n)
 
-        # Collect weights from user input
-        for idx, ticker in enumerate(tickers):
+        # 🔄 Reinitialize weights to equal split whenever tickers change
+        if "weights" not in st.session_state or set(st.session_state["weights"].keys()) != set(tickers):
+            st.session_state["weights"] = {
+                t: base_weight + (1 if i < remainder else 0)
+                for i, t in enumerate(tickers)
+            }
+
+        # Collect integer weights
+        weights = []
+        for ticker in tickers:
             key = f"weight_{ticker}"
+            default_value = st.session_state["weights"].get(ticker, 0)
             weight = st.number_input(
                 f"{ticker} weight (%)",
-                min_value=0.0,
-                max_value=100.0,
-                value=float(st.session_state[key]),  # Explicitly cast to float
-                step=0.5,
-                format="%.2f",  # Force two decimal places with dot
+                min_value=0,
+                max_value=100,
+                value=int(default_value),
+                step=1,
+                format="%d",
                 key=key
             )
-            st.session_state[key] = float(weight)  # Update session state
-            weights.append(float(weight))  # Append as float
+            st.session_state["weights"][ticker] = int(weight)
+            weights.append(int(weight))
 
-        # Convert to numpy array for calculations
+        # Convert to numpy array
         weights = np.array(weights)
         total_weight = np.sum(weights)
 
         if total_weight != 100:
-            st.warning(f"⚠️ The sum of weights is {total_weight:.2f}%, it should be 100%.")
+            st.warning(f"⚠️ The sum of weights is {total_weight}%, it should be 100%.")
+            weights_norm = weights / total_weight if total_weight > 0 else np.zeros_like(weights)
+        else:
+            weights_norm = weights / 100
+
         if total_weight == 0:
             st.warning("Weights sum to 0, cannot compute portfolio. Assign weights > 0.")
         else:
-            weights_norm = weights / total_weight
-
-            # Fetch data and compute weighted portfolio
             combined_df = pd.DataFrame(index=pd.date_range(start=start_date, end=end_date))
             valid_tickers = []
             for ticker in tickers:
@@ -319,7 +280,6 @@ with tab3:
                 combined_df['Portfolio Cumulative Return'] = (1 + combined_df['Portfolio Daily Return']).cumprod()
                 combined_df['Portfolio Value (€)'] = st.session_state.initial_investment * combined_df['Portfolio Cumulative Return']
 
-                # Plot portfolio value
                 fig = px.line(
                     combined_df.reset_index(),
                     x='index',
@@ -329,7 +289,6 @@ with tab3:
                 fig.update_layout(xaxis_title="Date", yaxis_title="Portfolio Value (€)")
                 st.plotly_chart(fig, use_container_width=True)
 
-                # Portfolio metrics
                 realized_return = combined_df['Portfolio Cumulative Return'].iloc[-1] - 1
                 annualized_return = combined_df['Portfolio Daily Return'].mean() * 252
                 annualized_volatility = combined_df['Portfolio Daily Return'].std() * np.sqrt(252)
@@ -340,6 +299,8 @@ with tab3:
                 col2.metric("💹 Realized Return (%)", f"{realized_return*100:.2f}")
                 col3.metric("📊 Annualized Volatility (%)", f"{annualized_volatility*100:.2f}")
                 col4.metric("⚖️ Sharpe Ratio", f"{sharpe_ratio:.2f}")
+
+
 
 
 
