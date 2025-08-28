@@ -256,50 +256,49 @@ with tab2:
 # ===============================
 # --- Tab 3: Simulation ---
 # ===============================
-
 with tab3:
     st.subheader("📊 Portfolio Simulation")
 
     if tickers:
         st.markdown("### Enter Portfolio Weights (should sum to 100%)")
 
-        # Default weighting strategy
         n = len(tickers)
-        base_weight = int(100 / n)
-        remainder = 100 - (base_weight * n)
-        default_weights = [base_weight] * n
-        default_weights[0] += remainder  # ensure sum = 100
+
+        # Determine default equal weights
+        if n == 1:
+            default_weights = [100.0]
+        else:
+            base_weight = round(100 / n, 2)
+            remainder = 100 - (base_weight * n)
+            default_weights = [base_weight] * n
+            default_weights[0] += remainder
 
         weights = []
 
+        # Reset session_state if number of tickers changed
+        if "prev_tickers_count" not in st.session_state or st.session_state.prev_tickers_count != n:
+            for idx, ticker in enumerate(tickers):
+                st.session_state[f"weight_{ticker}"] = default_weights[idx]
+            st.session_state.prev_tickers_count = n
+
+        # Create number inputs
         for idx, ticker in enumerate(tickers):
             key = f"weight_{ticker}"
-
-            # Initialize session_state if not present
-            if key not in st.session_state:
-                st.session_state[key] = float(default_weights[idx])
-                widget_value = st.session_state[key]  # pass as value
-            else:
-                widget_value = None  # let number_input use session_state
 
             weight = st.number_input(
                 f"{ticker} weight (%)",
                 min_value=0.0,
                 max_value=100.0,
-                value=widget_value,
+                value=st.session_state[key],
                 step=0.5,
-                key=key
+                key=key,
+                format="%.2f"
             )
-
-            # Ensure weight is float and never None
-            if weight is None:
-                weight = 0.0
 
             weights.append(float(weight))
 
         weights = np.array(weights)
         total_weight = weights.sum()
-
 
         if total_weight != 100:
             st.warning(f"⚠️ The sum of weights is {total_weight:.2f}%, it should be 100%.")
@@ -312,6 +311,7 @@ with tab3:
             # Fetch data and compute weighted portfolio
             combined_df = pd.DataFrame(index=pd.date_range(start=start_date, end=end_date))
             valid_tickers = []
+
             for ticker in tickers:
                 df = get_data(ticker, start_date, end_date)
                 if df.empty or len(df['Daily Return'].dropna()) < 2:
@@ -344,6 +344,7 @@ with tab3:
                 col2.metric("💹 Realized Return (%)", f"{realized_return*100:.2f}")
                 col3.metric("📊 Annualized Volatility (%)", f"{annualized_volatility*100:.2f}")
                 col4.metric("⚖️ Sharpe Ratio", f"{sharpe_ratio:.2f}")
+
 
 
 
