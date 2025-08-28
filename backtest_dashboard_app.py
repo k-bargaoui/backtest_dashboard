@@ -256,6 +256,8 @@ with tab2:
 # ===============================
 # --- Tab 3: Simulation ---
 # ===============================
+# --- Tab 3: Portfolio Simulation ---
+# ===============================
 with tab3:
     st.subheader("📊 Portfolio Simulation")
 
@@ -263,42 +265,32 @@ with tab3:
         st.markdown("### Enter Portfolio Weights (should sum to 100%)")
 
         n = len(tickers)
-
-        # Determine default equal weights
-        if n == 1:
-            default_weights = [100.0]
-        else:
-            base_weight = round(100 / n, 2)
-            remainder = 100 - (base_weight * n)
-            default_weights = [base_weight] * n
-            default_weights[0] += remainder
-
+        base_weight = 100 / n
         weights = []
 
-        # Reset session_state if number of tickers changed
-        if "prev_tickers_count" not in st.session_state or st.session_state.prev_tickers_count != n:
-            for idx, ticker in enumerate(tickers):
-                st.session_state[f"weight_{ticker}"] = default_weights[idx]
-            st.session_state.prev_tickers_count = n
-
-        # Create number inputs
+        # Initialize weights in session_state if missing
         for idx, ticker in enumerate(tickers):
             key = f"weight_{ticker}"
+            if key not in st.session_state:
+                # Default: equal weights
+                st.session_state[key] = round(base_weight, 2)
 
+            # Number input widget
             weight = st.number_input(
                 f"{ticker} weight (%)",
                 min_value=0.0,
                 max_value=100.0,
                 value=st.session_state[key],
                 step=0.5,
-                key=key,
-                format="%.2f"
+                format="%.2f",
+                key=key
             )
 
             weights.append(float(weight))
 
+        # Convert to numpy array for calculations
         weights = np.array(weights)
-        total_weight = weights.sum()
+        total_weight = np.sum(weights)
 
         if total_weight != 100:
             st.warning(f"⚠️ The sum of weights is {total_weight:.2f}%, it should be 100%.")
@@ -311,7 +303,6 @@ with tab3:
             # Fetch data and compute weighted portfolio
             combined_df = pd.DataFrame(index=pd.date_range(start=start_date, end=end_date))
             valid_tickers = []
-
             for ticker in tickers:
                 df = get_data(ticker, start_date, end_date)
                 if df.empty or len(df['Daily Return'].dropna()) < 2:
@@ -329,7 +320,12 @@ with tab3:
                 combined_df['Portfolio Value (€)'] = st.session_state.initial_investment * combined_df['Portfolio Cumulative Return']
 
                 # Plot portfolio value
-                fig = px.line(combined_df.reset_index(), x='index', y='Portfolio Value (€)', title="Weighted Portfolio Value Over Time")
+                fig = px.line(
+                    combined_df.reset_index(), 
+                    x='index', 
+                    y='Portfolio Value (€)', 
+                    title="Weighted Portfolio Value Over Time"
+                )
                 fig.update_layout(xaxis_title="Date", yaxis_title="Portfolio Value (€)")
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -344,6 +340,7 @@ with tab3:
                 col2.metric("💹 Realized Return (%)", f"{realized_return*100:.2f}")
                 col3.metric("📊 Annualized Volatility (%)", f"{annualized_volatility*100:.2f}")
                 col4.metric("⚖️ Sharpe Ratio", f"{sharpe_ratio:.2f}")
+
 
 
 
