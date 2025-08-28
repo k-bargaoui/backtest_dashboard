@@ -252,24 +252,104 @@ with tab2:
     else:
         st.info("No valid data to display in leaderboard.")
 
+
 # ===============================
-# --- Tab 3: Portfolio Simulation ---
+# --- Tab 3: Simulation ---
 # ===============================
+
 with tab3:
-    st.subheader("📊 Portfolio Simulation (Individual Ticker Evolution)")
-    for ticker in tickers:
-        df = get_data(ticker, start_date, end_date)
-        if df.empty or len(df['Daily Return'].dropna()) < 2:
-            continue
-        cumulative = (1 + df['Daily Return']).cumprod()
-        portfolio_value = st.session_state.initial_investment * cumulative
-        portfolio_df = pd.DataFrame({
-            "Date": df.index,
-            "Portfolio Value": portfolio_value
-        })
-        fig = px.line(portfolio_df, x="Date", y="Portfolio Value", title=f"{ticker} Portfolio Value")
-        st.plotly_chart(fig, use_container_width=True)
-        st.metric(f"📈 Final Value for {ticker}", f"{portfolio_value.iloc[-1]:.2f} €")
+    st.subheader("📊 Portfolio Simulation")
+
+    if tickers:
+        st.markdown("### Enter Portfolio Weights (should sum to 100%)")
+
+        # Default weighting strategy
+        n = len(tickers)
+        base_weight = int(100 / n)
+        remainder = 100 - (base_weight * n)
+        default_weights = [base_weight] * n
+        default_weights[0] += remainder  # ensure sum = 100
+
+        weights = []
+
+        for idx, ticker in enumerate(tickers):
+            key = f"weight_{ticker}"
+
+            # Initialize session_state if not present
+            if key not in st.session_state:
+                st.session_state[key] = float(default_weights[idx])
+                widget_value = st.session_state[key]  # pass as value
+            else:
+                widget_value = None  # let number_input use session_state
+
+            weight = st.number_input(
+                f"{ticker} weight (%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=widget_value,
+                step=0.5,
+                key=key
+            )
+
+            # Ensure weight is float and never None
+            if weight is None:
+                weight = 0.0
+
+            weights.append(float(weight))
+
+        weights = np.array(weights)
+        total_weight = weights.sum()
+
+
+        if total_weight != 100:
+            st.warning(f"⚠️ The sum of weights is {total_weight:.2f}%, it should be 100%.")
+
+        if total_weight == 0:
+            st.warning("Weights sum to 0, cannot compute portfolio. Assign weights > 0.")
+        else:
+            weights_norm = weights / total_weight
+
+            # Fetch data and compute weighted portfolio
+            combined_df = pd.DataFrame(index=pd.date_range(start=start_date, end=end_date))
+            valid_tickers = []
+            for ticker in tickers:
+                df = get_data(ticker, start_date, end_date)
+                if df.empty or len(df['Daily Return'].dropna()) < 2:
+                    st.warning(f"No valid data for {ticker}. Skipping.")
+                    continue
+                combined_df[ticker] = df['Daily Return']
+                valid_tickers.append(ticker)
+
+            combined_df = combined_df.dropna()
+            if combined_df.empty:
+                st.warning("No valid combined data for portfolio.")
+            else:
+                combined_df['Portfolio Daily Return'] = (combined_df[valid_tickers] * weights_norm[:len(valid_tickers)]).sum(axis=1)
+                combined_df['Portfolio Cumulative Return'] = (1 + combined_df['Portfolio Daily Return']).cumprod()
+                combined_df['Portfolio Value (€)'] = st.session_state.initial_investment * combined_df['Portfolio Cumulative Return']
+
+                # Plot portfolio value
+                fig = px.line(combined_df.reset_index(), x='index', y='Portfolio Value (€)', title="Weighted Portfolio Value Over Time")
+                fig.update_layout(xaxis_title="Date", yaxis_title="Portfolio Value (€)")
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Portfolio metrics
+                realized_return = combined_df['Portfolio Cumulative Return'].iloc[-1] - 1
+                annualized_return = combined_df['Portfolio Daily Return'].mean() * 252
+                annualized_volatility = combined_df['Portfolio Daily Return'].std() * np.sqrt(252)
+                sharpe_ratio = annualized_return / annualized_volatility if annualized_volatility else np.nan
+
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("📈 Final Portfolio Value (€)", f"{combined_df['Portfolio Value (€)'].iloc[-1]:.2f}")
+                col2.metric("💹 Realized Return (%)", f"{realized_return*100:.2f}")
+                col3.metric("📊 Annualized Volatility (%)", f"{annualized_volatility*100:.2f}")
+                col4.metric("⚖️ Sharpe Ratio", f"{sharpe_ratio:.2f}")
+
+
+
+
+
+
 
 # ===============================
 # --- Tab 4: Insights ---
