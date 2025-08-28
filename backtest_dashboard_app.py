@@ -260,46 +260,37 @@ with tab2:
 # ===============================
 with tab3:
     st.subheader("📊 Portfolio Simulation")
-
     if tickers:
         st.markdown("### Enter Portfolio Weights (should sum to 100%)")
-
         n = len(tickers)
         base_weight = 100 / n
         weights = []
-
         # Initialize weights in session_state if missing
         for idx, ticker in enumerate(tickers):
             key = f"weight_{ticker}"
             if key not in st.session_state:
                 # Default: equal weights
                 st.session_state[key] = round(base_weight, 2)
-
             # Number input widget
             weight = st.number_input(
                 f"{ticker} weight (%)",
                 min_value=0.0,
                 max_value=100.0,
-                value=st.session_state[key],
+                value=float(st.session_state[key]),  # Explicitly cast to float
                 step=0.5,
-                format="%.2f",
+                format="%.2f",  # Force two decimal places
                 key=key
             )
-
-            weights.append(float(weight))
-
+            weights.append(float(weight))  # Explicitly cast to float
         # Convert to numpy array for calculations
         weights = np.array(weights)
         total_weight = np.sum(weights)
-
         if total_weight != 100:
             st.warning(f"⚠️ The sum of weights is {total_weight:.2f}%, it should be 100%.")
-
         if total_weight == 0:
             st.warning("Weights sum to 0, cannot compute portfolio. Assign weights > 0.")
         else:
             weights_norm = weights / total_weight
-
             # Fetch data and compute weighted portfolio
             combined_df = pd.DataFrame(index=pd.date_range(start=start_date, end=end_date))
             valid_tickers = []
@@ -310,7 +301,6 @@ with tab3:
                     continue
                 combined_df[ticker] = df['Daily Return']
                 valid_tickers.append(ticker)
-
             combined_df = combined_df.dropna()
             if combined_df.empty:
                 st.warning("No valid combined data for portfolio.")
@@ -318,23 +308,20 @@ with tab3:
                 combined_df['Portfolio Daily Return'] = (combined_df[valid_tickers] * weights_norm[:len(valid_tickers)]).sum(axis=1)
                 combined_df['Portfolio Cumulative Return'] = (1 + combined_df['Portfolio Daily Return']).cumprod()
                 combined_df['Portfolio Value (€)'] = st.session_state.initial_investment * combined_df['Portfolio Cumulative Return']
-
                 # Plot portfolio value
                 fig = px.line(
-                    combined_df.reset_index(), 
-                    x='index', 
-                    y='Portfolio Value (€)', 
+                    combined_df.reset_index(),
+                    x='index',
+                    y='Portfolio Value (€)',
                     title="Weighted Portfolio Value Over Time"
                 )
                 fig.update_layout(xaxis_title="Date", yaxis_title="Portfolio Value (€)")
                 st.plotly_chart(fig, use_container_width=True)
-
                 # Portfolio metrics
                 realized_return = combined_df['Portfolio Cumulative Return'].iloc[-1] - 1
                 annualized_return = combined_df['Portfolio Daily Return'].mean() * 252
                 annualized_volatility = combined_df['Portfolio Daily Return'].std() * np.sqrt(252)
                 sharpe_ratio = annualized_return / annualized_volatility if annualized_volatility else np.nan
-
                 col1, col2, col3, col4 = st.columns(4)
                 col1.metric("📈 Final Portfolio Value (€)", f"{combined_df['Portfolio Value (€)'].iloc[-1]:.2f}")
                 col2.metric("💹 Realized Return (%)", f"{realized_return*100:.2f}")
