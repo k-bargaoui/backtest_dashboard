@@ -209,10 +209,56 @@ with tab1:
             st.plotly_chart(fig, use_container_width=True)
         st.markdown("---")
 
-
-
 # ===============================
 # --- Tab 2: Leaderboard ---
+# ===============================
+with tab2:
+    st.subheader("🏆 Performance Leaderboard")
+    leaderboard = []
+    annual_returns = []
+
+    for ticker in tickers:
+        df = get_data(ticker, start_date, end_date)
+        if df.empty or len(df['Close'].dropna()) < 2:
+            continue
+
+        initial_price, final_price = float(df['Close'].iloc[0]), float(df['Close'].iloc[-1])
+        return_pct = ((final_price / initial_price) - 1) * 100
+        invested_final_value = st.session_state.initial_investment * (final_price / initial_price)
+        annualized_return = df['Daily Return'].mean() * 252
+        annualized_volatility = df['Daily Return'].std() * np.sqrt(252)
+        annualized_sharpe = annualized_return / annualized_volatility if annualized_volatility else np.nan
+
+        leaderboard.append({
+            "Ticker": ticker,
+            "Return (%)": round(return_pct, 2),
+            "Final Value (€)": round(invested_final_value, 2),
+            "Annualized Return (%)": round(annualized_return * 100, 2),
+            "Annualized Volatility (%)": round(annualized_volatility * 100, 2),
+            "Sharpe Ratio": round(annualized_sharpe, 2)
+        })
+
+        df['Year'] = df.index.year
+        grouped = df.groupby('Year')['Daily Return'].apply(lambda x: (1 + x).prod() - 1)
+        for year, ret in grouped.items():
+            annual_returns.append({"Ticker": ticker, "Year": year, "Return (%)": round(ret * 100, 2)})
+
+    if leaderboard:
+        leaderboard_df = pd.DataFrame(leaderboard).sort_values(by="Annualized Return (%)", ascending=False)
+        st.dataframe(leaderboard_df, use_container_width=True)
+
+        st.subheader("📅 Annual Returns by Year")
+        annual_df = pd.DataFrame(annual_returns)
+        fig = px.bar(annual_df, x="Year", y="Return (%)", color="Ticker", barmode="group", title="Annual Returns by Ticker")
+        st.plotly_chart(fig, use_container_width=True)
+
+        csv = leaderboard_df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Leaderboard as CSV", data=csv, file_name="leaderboard.csv", mime="text/csv")
+    else:
+        st.info("No valid data to display in leaderboard.")
+
+# ===============================
+# --- Tab 3: simulator ---
 # ===============================
 with tab3:
     st.subheader("📊 Portfolio Simulation")
